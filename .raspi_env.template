@@ -1,64 +1,36 @@
 #!/bin/bash
-# .raspi_env.template — Environment variables for RaspIP.py
+# .raspi_env.template — Optional environment variables for RaspIP.py
 #
-# This file contains configuration for Internet_Base/RaspIP.py
+# NOTE: SMTP credentials (host, user, password, from address) are read from
+# ~/.msmtprc — the same file used by sync.sh. Only set variables below.
 #
 # SETUP INSTRUCTIONS:
-# 1. Copy this file to your home directory: cp .raspi_env.template ~/.raspi_env
-# 2. Edit ~/.raspi_env and replace the placeholders with your Gmail credentials
-# 3. Load before running RaspIP: source ~/.raspi_env && python3 RaspIP.py
-# 4. Or add to cron: @reboot source ~/.raspi_env && python3 /path/to/RaspIP.py
+# 1. Copy this file: cp .raspi_env.template ~/.raspi_env
+# 2. Edit and fill in your recipient email and device name
+# 3. Load before running: source ~/.raspi_env && python3 RaspIP.py
 #
-# WARNING: This file contains your email password!
-# - Never commit it to version control
-# - Restrict permissions: chmod 600 ~/.raspi_env
-# - Never share it with others
+# WARNING: Keep this file private (chmod 600 ~/.raspi_env) if you store
+# sensitive values here. Do NOT commit it to version control.
 
 # ========================================
-# REQUIRED - Email Configuration
+# REQUIRED
 # ========================================
 
-# Gmail SMTP user (your Gmail address)
-export RASPI_IP_SMTP_USER="your_email@gmail.com"
-
-# Gmail App Password (NOT your regular Gmail password!)
-# Generate at: https://myaccount.google.com/apppasswords
-# Select "Mail" and "Windows (or Linux) Computer"
-# Format: 16 characters with spaces (xxxx xxxx xxxx xxxx)
-export RASPI_IP_SMTP_PASSWORD="xxxx xxxx xxxx xxxx"
-
-# Email sender address (usually same as SMTP_USER)
-export RASPI_IP_EMAIL_FROM="your_email@gmail.com"
-
-# Email recipient (where to send notifications)
+# Email recipient (where IP-change notifications are sent)
 export RASPI_IP_EMAIL_TO="recipient@gmail.com"
 
 # ========================================
-# OPTIONAL - Customization
+# OPTIONAL — Customisation
 # ========================================
 
-# Custom device name (default: system hostname)
-# This name appears in email subject and body
+# Device name shown in email subject and body (default: system hostname)
 export RASPI_IP_DEVICE_NAME="MyRaspberryPi"
 
 # Email subject template (default: "Raspberry Pi IP address update")
-# {DEVICE_NAME} will be replaced with the device name above
 export RASPI_IP_EMAIL_SUBJECT="Raspberry Pi IP address update"
 
-# Check interval in seconds (default: 3600 = 1 hour)
-# How often to check for IP address changes
+# How often to check for IP changes, in seconds (default: 3600 = 1 hour)
 export RASPI_IP_CHECK_INTERVAL_SECONDS="3600"
 
-# State file location (default: raspip_last_ips.json in current directory)
-# Path where IP state is saved to detect changes
+# Where to store the last-known IP state (default: raspip_last_ips.json in CWD)
 export RASPI_IP_STATE_FILE="/home/pi/.raspi_state.json"
-
-# ========================================
-# OPTIONAL - Advanced SMTP Settings
-# ========================================
-
-# Gmail SMTP server (default: smtp.gmail.com)
-export RASPI_IP_SMTP_SERVER="smtp.gmail.com"
-
-# Gmail SMTP port (default: 587 for TLS)
-export RASPI_IP_SMTP_PORT="587"

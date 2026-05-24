@@ -7,7 +7,6 @@ Configuration: Uses ~/.msmtprc (same as sync.sh)
 - Supports custom device naming
 """
 
-import configparser
 import json
 import logging
 import os
@@ -44,49 +43,70 @@ EMAIL_TO = None
 
 
 def parse_msmtprc():
-    """Parse ~/.msmtprc file and extract Gmail configuration.
-    
+    """Parse ~/.msmtprc file using the native msmtp configuration format.
+
+    msmtp uses its own line-oriented format (not INI), so configparser cannot
+    be used. This parser handles: blank lines, #-comments (inline and full-line),
+    'defaults' blocks, 'account NAME' blocks, and 'account default : NAME' aliases.
+
     Returns:
-        dict: Configuration with keys: smtp_server, smtp_port, smtp_user, 
-              smtp_password, email_from, email_to
-        None: If file not found or parsing fails
+        dict with keys: smtp_server, smtp_port, smtp_user, smtp_password, email_from
+        None if file not found or parsing fails
     """
     if not os.path.isfile(MSMTPRC_FILE):
         logger.error(".msmtprc file not found at %s", MSMTPRC_FILE)
         return None
-    
+
     try:
-        config = configparser.ConfigParser()
-        config.read(MSMTPRC_FILE)
-        
-        # Look for the default account or gmail account
-        default_account = None
-        if config.has_section('defaults') and config.has_option('defaults', 'account'):
-            default_account = config.get('defaults', 'account')
-        
-        # Try to get account name - look for any section that's not 'defaults'
-        account_name = default_account or 'gmail'
-        
-        if not config.has_section(account_name):
-            logger.error("Account '%s' not found in .msmtprc", account_name)
+        sections = {}
+        current_section = None
+
+        with open(MSMTPRC_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.split("#")[0].strip()
+                if not line:
+                    continue
+                parts = line.split()
+                keyword = parts[0].lower()
+
+                if keyword == "defaults":
+                    current_section = "defaults"
+                    sections.setdefault(current_section, {})
+                elif keyword == "account" and len(parts) >= 2:
+                    if parts[1].lower() == "default":
+                        continue
+                    current_section = parts[1]
+                    sections.setdefault(current_section, {})
+                elif current_section is not None and len(parts) >= 2:
+                    sections[current_section][keyword] = " ".join(parts[1:])
+
+        # Prefer account named 'gmail'; otherwise use the first non-defaults account
+        account_name = None
+        if "gmail" in sections:
+            account_name = "gmail"
+        else:
+            for name in sections:
+                if name != "defaults":
+                    account_name = name
+                    break
+
+        if account_name is None:
+            logger.error("No account section found in .msmtprc")
             return None
-        
-        config_dict = {
-            'smtp_server': config.get(account_name, 'host', fallback='smtp.gmail.com'),
-            'smtp_port': int(config.get(account_name, 'port', fallback='587')),
-            'smtp_user': config.get(account_name, 'user', fallback=''),
-            'smtp_password': config.get(account_name, 'password', fallback=''),
-            'email_from': config.get(account_name, 'from', fallback=''),
-            'email_to': os.getenv("RASPI_IP_EMAIL_TO", ""),  # Can override via env var
+
+        # Account values override defaults
+        merged = {**sections.get("defaults", {}), **sections[account_name]}
+
+        return {
+            "smtp_server": merged.get("host", "smtp.gmail.com"),
+            "smtp_port": int(merged.get("port", "587")),
+            "smtp_user": merged.get("user", ""),
+            "smtp_password": merged.get("password", ""),
+            "email_from": merged.get("from", ""),
         }
-        
-        return config_dict
-    
-    except configparser.Error as e:
-        logger.error("Error parsing .msmtprc: %s", str(e))
-        return None
+
     except Exception as e:
-        logger.error("Unexpected error reading .msmtprc: %s", str(e))
+        logger.error("Error parsing .msmtprc: %s", str(e))
         return None
 
 
@@ -244,16 +264,16 @@ def validate_configuration():
     
     # Validate required fields
     if not SMTP_USER:
-        errors.append(".msmtprc missing 'user' field in [gmail] section")
-    
+        errors.append(".msmtprc missing 'user' field in account section")
+
     if not SMTP_PASSWORD:
-        errors.append(".msmtprc missing 'password' field in [gmail] section")
-    
+        errors.append(".msmtprc missing 'password' field in account section")
+
     if not EMAIL_FROM:
-        errors.append(".msmtprc missing 'from' field in [gmail] section")
+        errors.append(".msmtprc missing 'from' field in account section")
     
     if not EMAIL_TO:
-        errors.append("RASPI_IP_EMAIL_TO environment variable not set (recipient email)")
+        errors.append("RASPI_IP_EMAIL_TO environment variable not set (recipient email address)")
         errors.append("  Set it: export RASPI_IP_EMAIL_TO='recipient@gmail.com'")
     
     # Verify state file directory is writable

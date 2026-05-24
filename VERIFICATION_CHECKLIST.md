@@ -76,7 +76,9 @@ Use the setup script for one tool and manual setup for the other.
 
 - [ ] Gmail account with 2FA enabled
 - [ ] Gmail App Password generated (16 characters)
-- [ ] `~/.raspi_env` file created with credentials
+- [ ] `~/.msmtprc` created with `host`, `user`, `password`, `from` filled in
+- [ ] `chmod 600 ~/.msmtprc` applied
+- [ ] `RASPI_IP_EMAIL_TO` environment variable set (recipient address)
 - [ ] Can run: `source ~/.raspi_env && python3 Internet_Base/RaspIP.py`
 - [ ] See log output starting with "Configuration validated successfully"
 
@@ -237,15 +239,12 @@ ls -la ~/.raspi_env ~/.msmtprc
 
 **For RaspIP.py:**
 ```bash
-# Check all environment variables are set
-source ~/.raspi_env
-env | grep RASPI_IP_
+# Check ~/.msmtprc has required fields
+grep -E "^(host|user|password|from)" ~/.msmtprc
 
-# Should show 4 variables at minimum:
-# RASPI_IP_SMTP_USER
-# RASPI_IP_SMTP_PASSWORD
-# RASPI_IP_EMAIL_FROM
-# RASPI_IP_EMAIL_TO
+# Check recipient env var is set
+echo $RASPI_IP_EMAIL_TO
+# If empty: export RASPI_IP_EMAIL_TO="recipient@gmail.com"
 ```
 
 **For sync.sh:**

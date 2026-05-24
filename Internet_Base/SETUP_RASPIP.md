@@ -12,7 +12,7 @@ Before running `RaspIP.py`, ensure you have the following:
 - [ ] Gmail account with 2-factor authentication enabled
 - [ ] Gmail App Password generated (NOT your regular Gmail password)
   - Go to: https://myaccount.google.com/apppasswords
-  - Select "Mail" and "Windows (or Linux) Computer"
+  - Select "Mail" and your device type
   - Copy the generated 16-character password
 
 ### 3. Network Requirements
@@ -20,64 +20,104 @@ Before running `RaspIP.py`, ensure you have the following:
 - [ ] Can reach smtp.gmail.com:587 (Gmail SMTP server)
 - [ ] Port 587 is not blocked by firewall
 
+---
+
 ## Configuration
 
-### Set Required Environment Variables
+RaspIP.py reads SMTP credentials from `~/.msmtprc` — the **same file used by
+sync.sh**. If you have already configured `~/.msmtprc` for sync.sh, you only
+need to set `RASPI_IP_EMAIL_TO`.
 
-Before running the script, set these environment variables:
+### Step 1: Create `~/.msmtprc` (SMTP credentials)
+
+Copy the template and fill in your Gmail credentials:
 
 ```bash
-# REQUIRED - Email configuration
-export RASPI_IP_SMTP_USER="your_email@gmail.com"              # Your Gmail address
-export RASPI_IP_SMTP_PASSWORD="xxxx xxxx xxxx xxxx"           # 16-char Gmail app password
-export RASPI_IP_EMAIL_FROM="your_email@gmail.com"            # Sender (same as SMTP_USER)
-export RASPI_IP_EMAIL_TO="recipient@gmail.com"               # Where to send notifications
-
-# OPTIONAL - Customization
-export RASPI_IP_DEVICE_NAME="MyPiDevice"                     # Device name (default: hostname)
-export RASPI_IP_CHECK_INTERVAL_SECONDS="3600"                # Check interval in seconds (default: 1 hour)
-export RASPI_IP_STATE_FILE="/home/pi/raspip_state.json"      # State file location (default: ./raspip_last_ips.json)
+cp ~/RaspberryPI_Auto/.msmtprc.template ~/.msmtprc
+nano ~/.msmtprc
+chmod 600 ~/.msmtprc   # msmtp requires restricted permissions
 ```
 
-### Create a Configuration Script
+The file should look like this (replace placeholders):
 
-For convenience, create `~/.raspi_ip_config.sh`:
+```
+defaults
+auth           on
+tls            on
+tls_trust_file /etc/ssl/certs/ca-certificates.crt
+logfile        ~/.msmtp.log
 
-```bash
-#!/bin/bash
-export RASPI_IP_SMTP_USER="your_email@gmail.com"
-export RASPI_IP_SMTP_PASSWORD="xxxx xxxx xxxx xxxx"
-export RASPI_IP_EMAIL_FROM="your_email@gmail.com"
-export RASPI_IP_EMAIL_TO="recipient@gmail.com"
-export RASPI_IP_DEVICE_NAME="MyPiDevice"
-export RASPI_IP_CHECK_INTERVAL_SECONDS="3600"
-export RASPI_IP_STATE_FILE="/home/pi/raspip_state.json"
+account        gmail
+host           smtp.gmail.com
+port           587
+from           your_email@gmail.com
+user           your_email@gmail.com
+password       your16charapppassword
+
+account default : gmail
 ```
 
-Then load it before running:
+> **⚠️ Use an App Password**, not your regular Gmail password.
+> Generate one at https://myaccount.google.com/apppasswords (requires 2FA enabled).
+
+### Step 2: Set Required Environment Variable
+
 ```bash
-source ~/.raspi_ip_config.sh
+export RASPI_IP_EMAIL_TO="recipient@gmail.com"   # Where to send notifications
+```
+
+### Step 3: (Optional) Set Additional Variables
+
+```bash
+export RASPI_IP_DEVICE_NAME="MyPiDevice"             # Default: system hostname
+export RASPI_IP_EMAIL_SUBJECT="Pi IP update"         # Default: "Raspberry Pi IP address update"
+export RASPI_IP_CHECK_INTERVAL_SECONDS="3600"        # Default: 3600 (1 hour)
+export RASPI_IP_STATE_FILE="/home/pi/.raspi_state.json"  # Default: raspip_last_ips.json
+```
+
+### Create a Persistent Config File
+
+For convenience, copy and edit the provided template:
+
+```bash
+cp ~/RaspberryPI_Auto/.raspi_env.template ~/.raspi_env
+nano ~/.raspi_env
+chmod 600 ~/.raspi_env
+```
+
+Load it before running:
+
+```bash
+source ~/.raspi_env
 python3 /home/pi/RaspberryPI_Auto/Internet_Base/RaspIP.py
 ```
+
+---
 
 ## Running the Script
 
-### Test Run (with output)
+### Test Run
+
 ```bash
-source ~/.raspi_ip_config.sh
+source ~/.raspi_env
 python3 /home/pi/RaspberryPI_Auto/Internet_Base/RaspIP.py
 ```
 
-You should see log messages like:
+Expected startup output:
+
 ```
 [2026-05-24 14:30:45] INFO: Configuration validated successfully
+[2026-05-24 14:30:45] INFO: Configuration File: /home/pi/.msmtprc
 [2026-05-24 14:30:45] INFO: Device Name: MyPiDevice
-[2026-05-24 14:30:45] INFO: State File: /home/pi/raspip_state.json
+[2026-05-24 14:30:45] INFO: State File: /home/pi/.raspi_state.json
 [2026-05-24 14:30:45] INFO: Check Interval: 3600 seconds (60 minutes)
+[2026-05-24 14:30:45] INFO: SMTP Server: smtp.gmail.com:587
+[2026-05-24 14:30:45] INFO: From: your_email@gmail.com
+[2026-05-24 14:30:45] INFO: To: recipient@gmail.com
 [2026-05-24 14:30:45] INFO: Starting RaspIP monitor for device: MyPiDevice
 ```
 
-### Run in Background (with systemd)
+### Run in Background (systemd)
 
 Create `/etc/systemd/system/raspip.service`:
 
@@ -91,7 +131,7 @@ Wants=network-online.target
 Type=simple
 User=pi
 WorkingDirectory=/home/pi/RaspberryPI_Auto/Internet_Base
-EnvironmentFile=/home/pi/.raspi_ip_config.sh
+EnvironmentFile=/home/pi/.raspi_env
 ExecStart=/usr/bin/python3 /home/pi/RaspberryPI_Auto/Internet_Base/RaspIP.py
 Restart=on-failure
 RestartSec=60
@@ -100,7 +140,8 @@ RestartSec=60
 WantedBy=multi-user.target
 ```
 
-Then enable and start:
+Enable and start:
+
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable raspip
@@ -109,137 +150,102 @@ sudo systemctl status raspip
 ```
 
 View logs:
+
 ```bash
 sudo journalctl -u raspip -f
 ```
 
 ### Run as Cron Job
 
-Add to crontab with auto-restart on failure:
-
 ```bash
-# Edit crontab
 crontab -e
-
-# Add this line (runs at boot and restarts if stopped)
-@reboot source /home/pi/.raspi_ip_config.sh && python3 /home/pi/RaspberryPI_Auto/Internet_Base/RaspIP.py >> /home/pi/raspip.log 2>&1 &
+# Add (starts at boot, logs to file):
+@reboot sleep 30 && source /home/pi/.raspi_env && python3 /home/pi/RaspberryPI_Auto/Internet_Base/RaspIP.py >> /home/pi/raspip.log 2>&1 &
 ```
+
+---
 
 ## Troubleshooting
 
-### ❌ "Configuration validation failed"
+### ❌ "Cannot read .msmtprc" / ".msmtprc file not found"
 
-**Check these things:**
+```bash
+# Check the file exists
+ls -la ~/.msmtprc
 
-1. **Missing EMAIL_TO**
-   ```bash
-   echo $RASPI_IP_EMAIL_TO
-   # Should show an email address, not empty
-   ```
+# If missing, create from template
+cp ~/RaspberryPI_Auto/.msmtprc.template ~/.msmtprc
+nano ~/.msmtprc
+chmod 600 ~/.msmtprc
+```
 
-2. **Missing SMTP_USER**
-   ```bash
-   echo $RASPI_IP_SMTP_USER
-   # Should show your Gmail address
-   ```
+### ❌ "No account section found in .msmtprc"
 
-3. **Missing SMTP_PASSWORD**
-   ```bash
-   echo $RASPI_IP_SMTP_PASSWORD
-   # Should show 16 characters with spaces (xxxx xxxx xxxx xxxx)
-   # ⚠️ NOT your regular Gmail password!
-   ```
+The file exists but has no `account` block. Ensure your `~/.msmtprc` contains:
 
-4. **State file directory not writable**
-   ```bash
-   mkdir -p $(dirname $RASPI_IP_STATE_FILE)
-   chmod 755 $(dirname $RASPI_IP_STATE_FILE)
-   ```
+```
+account        gmail
+host           smtp.gmail.com
+...
+```
+
+### ❌ ".msmtprc missing 'user' / 'password' / 'from' field"
+
+Open `~/.msmtprc` and verify the `account gmail` block has all three fields filled in
+(not left as placeholder text):
+
+```bash
+cat ~/.msmtprc
+```
+
+### ❌ "RASPI_IP_EMAIL_TO environment variable not set"
+
+```bash
+export RASPI_IP_EMAIL_TO="recipient@gmail.com"
+# Or add it to ~/.raspi_env and run: source ~/.raspi_env
+```
 
 ### ❌ "SMTP authentication failed"
 
-**Solutions:**
+1. Verify you are using a **Gmail App Password** (16 chars), not your regular password
+   - Generate at: https://myaccount.google.com/apppasswords
+   - Requires 2-Step Verification to be enabled first
+2. Ensure the password in `~/.msmtprc` has no trailing spaces
+3. Verify 2FA is enabled: https://myaccount.google.com/security
 
-1. Verify Gmail App Password (not regular password)
-   - Go to: https://myaccount.google.com/apppasswords
-   - Select "Mail" and "Windows Computer" (or Linux)
-   - Create a new one if needed
+### ❌ "Network error while connecting to smtp.gmail.com:587"
 
-2. Ensure 2-factor authentication is enabled on Gmail account
-   - https://myaccount.google.com/security
-
-3. Check for extra spaces in password:
-   ```bash
-   # This is WRONG (extra space at end):
-   export RASPI_IP_SMTP_PASSWORD="xxxx xxxx xxxx xxxx "
-   
-   # This is CORRECT:
-   export RASPI_IP_SMTP_PASSWORD="xxxx xxxx xxxx xxxx"
-   ```
-
-### ❌ "Network error while connecting"
-
-**Causes and solutions:**
-
-1. **No internet connection**
-   ```bash
-   ping 8.8.8.8
-   ```
-
-2. **Port 587 blocked**
-   ```bash
-   telnet smtp.gmail.com 587
-   # If it hangs or connection refused, port is blocked
-   ```
-
-3. **Firewall blocking outbound SMTP**
-   - Contact your network administrator
-   - Or use a VPN
-
-### ✅ "Email sent successfully"
-
-Great! The monitor is working. It will:
-- Check for IP changes every 3600 seconds (1 hour by default)
-- Send an email only when an IP address change is detected
-- Log all activities to stdout
+```bash
+# Test connectivity
+ping 8.8.8.8
+telnet smtp.gmail.com 587
+# If telnet hangs or is refused, port 587 is blocked by your network
+```
 
 ### ❓ "No email received after IP change"
 
-1. Check your spam/junk folder (add to contacts if needed)
-
-2. Verify the email was actually sent:
+1. Check your spam/junk folder
+2. Confirm the script logged "Email sent successfully"
+3. Check whether the IP actually changed (script only emails on changes):
    ```bash
-   # Look for "Email sent successfully" in logs
+   cat raspip_last_ips.json   # or your RASPI_IP_STATE_FILE path
    ```
 
-3. Check if IP actually changed (the script only sends on changes):
-   ```bash
-   # View current state
-   cat $(RASPI_IP_STATE_FILE}
-   ```
+---
 
 ## Important Notes
 
-⚠️ **Security:**
-- Never commit `.raspi_ip_config.sh` to version control
-- Never share your Gmail App Password
-- Consider restricting permissions: `chmod 600 ~/.raspi_ip_config.sh`
+⚠️ **Shared configuration with sync.sh:**
+- Both RaspIP.py and sync.sh read SMTP credentials from `~/.msmtprc`
+- One file configures email for both tools
+- RaspIP.py additionally requires `RASPI_IP_EMAIL_TO` (recipient address)
+- sync.sh has `TO` and `FROM` hardcoded inside the script itself
 
-⚠️ **Differences from sync.sh:**
-- **RaspIP.py** uses Gmail SMTP directly (smtplib)
-- **sync.sh** uses msmtp command with ~/.msmtprc file
-- They are **independent** systems with different configurations
-- No shared setup between them
+⚠️ **Security:**
+- Never commit `~/.msmtprc` or `~/.raspi_env` to version control
+- Keep permissions at 600: `chmod 600 ~/.msmtprc ~/.raspi_env`
+- Use Gmail App Passwords, not your account password
 
 ✅ **Logging:**
-- All activities are logged with timestamps
-- Errors are clearly reported
-- Check logs when troubleshooting
-
-## Support
-
-If you encounter issues:
-1. Check the logs (they show exactly what's happening)
-2. Verify all environment variables are set correctly
-3. Test Gmail connectivity separately: `telnet smtp.gmail.com 587`
-4. Ensure your Gmail App Password is correct and 2FA is enabled
+- All activities are logged to stdout with timestamps
+- Run manually to see detailed output before setting up as a service

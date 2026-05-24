@@ -29,13 +29,49 @@ fi
 
 cd "$REPO" || exit 1
 
-# 2. Run git pull and capture output + exit code
+# 2. Fetch remote without merging, then compare commits
+FETCH_OUTPUT=$(git fetch origin "$BRANCH" 2>&1)
+FETCH_CODE=$?
+echo "$FETCH_OUTPUT" >> "$LOG"
+
+if [ $FETCH_CODE -ne 0 ]; then
+    BODY="Git fetch FAILED. Please investigate.
+
+Host       : $HOSTNAME_LABEL
+Repo       : $REPO
+Branch     : $BRANCH
+Time       : $DATE
+Exit code  : $FETCH_CODE
+
+── Git output ─────────────────────────────
+$FETCH_OUTPUT
+
+── Log file ───────────────────────────────
+$LOG"
+    echo "$BODY" | mail -s "[Git Sync] FAILED — $HOSTNAME_LABEL" -r "$FROM" "$TO"
+    echo "[$DATE] Fetch FAILED. Mail sent." >> "$LOG"
+    echo "[$DATE] ── Sync ended ────────────────────" >> "$LOG"
+    exit 1
+fi
+
+LOCAL=$(git rev-parse HEAD)
+REMOTE=$(git rev-parse "origin/$BRANCH")
+
+if [ "$LOCAL" = "$REMOTE" ]; then
+    echo "[$DATE] No changes detected (local == remote at $LOCAL). Skipping pull." >> "$LOG"
+    echo "[$DATE] ── Sync ended ────────────────────" >> "$LOG"
+    exit 0
+fi
+
+echo "[$DATE] Changes detected ($LOCAL → $REMOTE). Pulling." >> "$LOG"
+
+# 3. Run git pull and capture output + exit code
 PULL_OUTPUT=$(git pull origin "$BRANCH" 2>&1)
 EXIT_CODE=$?
 
 echo "$PULL_OUTPUT" >> "$LOG"
 
-# 3. Build email based on result
+# 4. Build email based on result
 if [ $EXIT_CODE -eq 0 ]; then
     STATUS="SUCCESS"
     SUBJECT="[Git Sync] SUCCESS — $HOSTNAME_LABEL"
@@ -69,10 +105,10 @@ $PULL_OUTPUT
 $LOG"
 fi
 
-# 4. Send email
+# 5. Send email
 echo "$BODY" | mail -s "$SUBJECT" -r "$FROM" "$TO"
 MAIL_CODE=$?
 
-# 5. Final log entry
+# 6. Final log entry
 echo "[$DATE] Sync $STATUS. Mail exit: $MAIL_CODE." >> "$LOG"
 echo "[$DATE] ── Sync ended ────────────────────" >> "$LOG"

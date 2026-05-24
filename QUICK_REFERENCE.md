@@ -44,8 +44,8 @@ python3 Hardware_Base/GPSTest.py
 
 | File | Location | Contains |
 |------|----------|----------|
-| RaspIP config | ~/.raspi_env | RASPI_IP_* env vars |
-| sync.sh config | ~/.msmtprc | Gmail SMTP settings |
+| SMTP config (both tools) | ~/.msmtprc | Gmail host, user, password, from |
+| RaspIP env vars | ~/.raspi_env | RASPI_IP_EMAIL_TO + optional vars |
 | State file | ~/.raspi_state.json | Last known IPs |
 | Sync log | ~/RaspberryPI_Auto/sync.log | Sync history |
 
@@ -90,34 +90,18 @@ python3 Hardware_Base/GPSTest.py
 ## Check Configuration
 
 ```bash
-# View RaspIP config (hide password)
-grep -v PASSWORD ~/.raspi_env
-
-# View sync config (hide password)
+# View SMTP config (hide password line)
 grep -v "^password" ~/.msmtprc
 
-# Test email (RaspIP)
-source ~/.raspi_env
-python3 -c "
-import smtplib
-from email.message import EmailMessage
-msg = EmailMessage()
-msg.set_content('Test')
-msg['Subject'] = 'Test'
-msg['From'] = '$RASPI_IP_EMAIL_FROM'
-msg['To'] = '$RASPI_IP_EMAIL_TO'
-try:
-    with smtplib.SMTP('smtp.gmail.com', 587) as smtp:
-        smtp.starttls()
-        smtp.login('$RASPI_IP_SMTP_USER', '$RASPI_IP_SMTP_PASSWORD')
-        smtp.send_message(msg)
-    print('Success!')
-except Exception as e:
-    print(f'Error: {e}')
-"
+# View RaspIP env vars
+cat ~/.raspi_env
 
-# Test email (sync.sh)
+# Test email via msmtp (used by both tools for verification)
 echo "Test" | msmtp -v your_email@gmail.com
+
+# Test RaspIP.py startup (Ctrl+C to stop after config check)
+source ~/.raspi_env
+python3 ~/RaspberryPI_Auto/Internet_Base/RaspIP.py
 ```
 
 ---
@@ -150,19 +134,17 @@ chmod 755 Internet_Base/RaspIP.py # Executable
 
 ## Environment Variables Reference
 
+SMTP credentials come from `~/.msmtprc` — not from env vars.
+
 ```bash
 # REQUIRED for RaspIP.py
-RASPI_IP_SMTP_USER          # Gmail address
-RASPI_IP_SMTP_PASSWORD      # Gmail App Password
-RASPI_IP_EMAIL_FROM         # Sender address
 RASPI_IP_EMAIL_TO           # Recipient address
 
 # OPTIONAL for RaspIP.py
-RASPI_IP_DEVICE_NAME        # Device name (default: hostname)
-RASPI_IP_CHECK_INTERVAL_SECONDS    # Check frequency (default: 3600)
-RASPI_IP_STATE_FILE         # State file path
-RASPI_IP_SMTP_SERVER        # SMTP server (default: smtp.gmail.com)
-RASPI_IP_SMTP_PORT          # SMTP port (default: 587)
+RASPI_IP_DEVICE_NAME        # Device name in emails (default: hostname)
+RASPI_IP_EMAIL_SUBJECT      # Email subject template (default: "Raspberry Pi IP address update")
+RASPI_IP_CHECK_INTERVAL_SECONDS  # Check frequency in seconds (default: 3600)
+RASPI_IP_STATE_FILE         # State file path (default: raspip_last_ips.json)
 ```
 
 ---

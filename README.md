@@ -20,33 +20,35 @@ Monitor Raspberry Pi IP addresses and receive email notifications when they chan
 
 **Setup Guide:** See [Internet_Base/SETUP_RASPIP.md](Internet_Base/SETUP_RASPIP.md) for detailed setup instructions
 
-**Environment Variables:**
+**Configuration:**
+
+SMTP credentials (`host`, `user`, `password`, `from`) are read from `~/.msmtprc` —
+the same file used by sync.sh. Only the recipient address is set via env var.
+
 ```bash
-RASPI_IP_SMTP_USER               # Gmail address (REQUIRED)
-RASPI_IP_SMTP_PASSWORD           # Gmail App Password (REQUIRED)
-RASPI_IP_EMAIL_FROM              # Sender email (REQUIRED)
-RASPI_IP_EMAIL_TO                # Recipient email (REQUIRED)
-RASPI_IP_DEVICE_NAME             # Custom device name (default: system hostname)
-RASPI_IP_SMTP_SERVER             # SMTP server (default: smtp.gmail.com)
-RASPI_IP_SMTP_PORT               # SMTP port (default: 587)
-RASPI_IP_CHECK_INTERVAL_SECONDS   # Check interval (default: 3600)
+# REQUIRED — recipient address
+RASPI_IP_EMAIL_TO                # Where to send notifications
+
+# OPTIONAL — customisation
+RASPI_IP_DEVICE_NAME             # Device name in emails (default: system hostname)
+RASPI_IP_EMAIL_SUBJECT           # Email subject template (default: "Raspberry Pi IP address update")
+RASPI_IP_CHECK_INTERVAL_SECONDS  # Check interval in seconds (default: 3600)
 RASPI_IP_STATE_FILE              # State file path (default: raspip_last_ips.json)
 ```
 
 **Quick Start:**
 ```bash
-# Load configuration
-export RASPI_IP_DEVICE_NAME="MyPiDevice"
-export RASPI_IP_SMTP_USER="your_email@gmail.com"
-export RASPI_IP_SMTP_PASSWORD="xxxx xxxx xxxx xxxx"  # Gmail App Password
-export RASPI_IP_EMAIL_FROM="your_email@gmail.com"
-export RASPI_IP_EMAIL_TO="recipient@gmail.com"
+# 1. Create ~/.msmtprc (if not already done for sync.sh)
+cp .msmtprc.template ~/.msmtprc
+nano ~/.msmtprc      # fill in your Gmail address and App Password
+chmod 600 ~/.msmtprc
 
-# Run
+# 2. Set recipient and run
+export RASPI_IP_EMAIL_TO="recipient@gmail.com"
 python3 Internet_Base/RaspIP.py
 ```
 
-**⚠️ Important:** This uses Gmail SMTP directly with environment variables (NOT msmtp). See [CONFIGURATION_COMPARISON.md](CONFIGURATION_COMPARISON.md) for differences from sync.sh.
+**Note:** Both RaspIP.py and sync.sh share `~/.msmtprc` for SMTP credentials. See [Internet_Base/CONFIGURATION_COMPARISON.md](Internet_Base/CONFIGURATION_COMPARISON.md) for details.
 
 ---
 
@@ -91,10 +93,10 @@ Automated nightly Git repository sync with email status notifications. Perfect f
 
 **Features:**
 - Runs nightly via cron (11:50 PM by default)
-- Pulls latest changes from GitHub
-- Logs all sync activities
-- Sends email notifications with device hostname
-- Reports success or failure with detailed information
+- Fetches remote first; only pulls and emails if new commits exist (silent on no change)
+- Logs all sync activities to `sync.log`
+- Sends email notifications with device hostname on successful pull or fetch failure
+- Reports success or failure with detailed git output
 
 **Configuration (inside `sync.sh`):**
 ```bash

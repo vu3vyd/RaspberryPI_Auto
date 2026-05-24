@@ -60,27 +60,25 @@ bash ~/RaspberryPI_Auto/sync.sh
 
 ### Configure RaspIP.py Manually
 
-1. **Copy the template:**
+RaspIP.py reads SMTP credentials from `~/.msmtprc` (same as sync.sh).
+If you have already created `~/.msmtprc` for sync.sh, skip to step 3.
+
+1. **Create `~/.msmtprc`** (SMTP credentials — shared with sync.sh):
+   ```bash
+   cp .msmtprc.template ~/.msmtprc
+   nano ~/.msmtprc     # fill in from, user, password
+   chmod 600 ~/.msmtprc
+   ```
+
+2. **Set the recipient address:**
+   ```bash
+   export RASPI_IP_EMAIL_TO="recipient@gmail.com"
+   ```
+
+3. **(Optional) Copy env-var template for device name, interval, etc.:**
    ```bash
    cp .raspi_env.template ~/.raspi_env
-   ```
-
-2. **Edit the file:**
-   ```bash
-   nano ~/.raspi_env
-   ```
-   
-   Replace these with your information:
-   ```bash
-   export RASPI_IP_SMTP_USER="your_email@gmail.com"
-   export RASPI_IP_SMTP_PASSWORD="xxxx xxxx xxxx xxxx"
-   export RASPI_IP_EMAIL_FROM="your_email@gmail.com"
-   export RASPI_IP_EMAIL_TO="recipient@gmail.com"
-   export RASPI_IP_DEVICE_NAME="MyPiDevice"
-   ```
-
-3. **Secure the file:**
-   ```bash
+   nano ~/.raspi_env   # set RASPI_IP_EMAIL_TO and any optional vars
    chmod 600 ~/.raspi_env
    ```
 
@@ -159,12 +157,11 @@ echo "~/.msmtprc" >> .gitignore
 
 | Aspect | RaspIP.py | sync.sh |
 |--------|-----------|---------|
-| **Config Method** | Environment variables | ~/.msmtprc file |
-| **Config File** | ~/.raspi_env | ~/.msmtprc |
-| **Email System** | Gmail SMTP (smtplib) | msmtp command |
-| **Where to Set** | Before running Python | System-wide for mail command |
-| **Setup Script** | ✓ Included | ✓ Included |
-| **Template** | .raspi_env.template | .msmtprc.template |
+| **SMTP credentials** | `~/.msmtprc` (shared) | `~/.msmtprc` (shared) |
+| **Recipient address** | `RASPI_IP_EMAIL_TO` env var | `TO` variable in script |
+| **Optional config** | `~/.raspi_env` (env vars) | Edit variables in sync.sh |
+| **Email mechanism** | Python smtplib | msmtp command |
+| **Template** | .raspi_env.template (env vars only) | .msmtprc.template |
 
 ---
 
@@ -230,18 +227,15 @@ ls -la ~/.msmtprc  # Should show: -rw-------
 3. Ensure 2-Factor Authentication is enabled
 4. Regenerate the app password
 
-### "Email configuration incomplete"
+### "Email configuration incomplete" or ".msmtprc missing field"
 
-RaspIP.py validates that all required environment variables are set:
+RaspIP.py reads SMTP credentials from `~/.msmtprc`. Check:
 ```bash
-# Check what's set
-env | grep RASPI_IP
+# Verify .msmtprc exists and has required fields
+grep -E "^(user|from|password|host)" ~/.msmtprc
 
-# Should show:
-# RASPI_IP_SMTP_USER=...
-# RASPI_IP_SMTP_PASSWORD=...
-# RASPI_IP_EMAIL_FROM=...
-# RASPI_IP_EMAIL_TO=...
+# Verify recipient env var is set
+echo $RASPI_IP_EMAIL_TO
 ```
 
 ---

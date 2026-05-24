@@ -1,5 +1,12 @@
 # Linkage & Error Handling Improvements - Summary
 
+> **Note — current architecture:** RaspIP.py reads SMTP credentials from
+> `~/.msmtprc` (the same file used by sync.sh), not from environment variables.
+> The only required env var is `RASPI_IP_EMAIL_TO` (recipient address).
+> The "BEFORE / AFTER" examples below reflect an earlier iteration where env
+> vars were used for SMTP; error messages in the current code reference
+> `.msmtprc` fields instead.
+
 ## Issues Found
 
 ### 1. **No Error Validation at Startup**
