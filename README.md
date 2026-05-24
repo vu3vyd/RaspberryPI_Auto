@@ -15,32 +15,38 @@ Monitor Raspberry Pi IP addresses and receive email notifications when they chan
 - Sends email notifications on IP changes
 - Supports custom device naming for email reports
 - Configurable check intervals
+- Comprehensive logging and error handling
+- Pre-startup configuration validation
+
+**Setup Guide:** See [Internet_Base/SETUP_RASPIP.md](Internet_Base/SETUP_RASPIP.md) for detailed setup instructions
 
 **Environment Variables:**
 ```bash
-RASPI_IP_STATE_FILE              # Path to state file (default: raspip_last_ips.json)
+RASPI_IP_SMTP_USER               # Gmail address (REQUIRED)
+RASPI_IP_SMTP_PASSWORD           # Gmail App Password (REQUIRED)
+RASPI_IP_EMAIL_FROM              # Sender email (REQUIRED)
+RASPI_IP_EMAIL_TO                # Recipient email (REQUIRED)
+RASPI_IP_DEVICE_NAME             # Custom device name (default: system hostname)
 RASPI_IP_SMTP_SERVER             # SMTP server (default: smtp.gmail.com)
 RASPI_IP_SMTP_PORT               # SMTP port (default: 587)
-RASPI_IP_SMTP_USER               # SMTP username
-RASPI_IP_SMTP_PASSWORD           # SMTP password
-RASPI_IP_EMAIL_FROM              # Sender email address
-RASPI_IP_EMAIL_TO                # Recipient email address
-RASPI_IP_EMAIL_SUBJECT           # Email subject (default: "Raspberry Pi IP address update")
-RASPI_IP_DEVICE_NAME             # Custom device name for email reports (default: system hostname)
-RASPI_IP_CHECK_INTERVAL_SECONDS   # Check interval in seconds (default: 3600 / 1 hour)
+RASPI_IP_CHECK_INTERVAL_SECONDS   # Check interval (default: 3600)
+RASPI_IP_STATE_FILE              # State file path (default: raspip_last_ips.json)
 ```
 
-**Usage:**
+**Quick Start:**
 ```bash
-# Set device name for email notifications
+# Load configuration
 export RASPI_IP_DEVICE_NAME="MyPiDevice"
 export RASPI_IP_SMTP_USER="your_email@gmail.com"
-export RASPI_IP_SMTP_PASSWORD="your_app_password"
+export RASPI_IP_SMTP_PASSWORD="xxxx xxxx xxxx xxxx"  # Gmail App Password
 export RASPI_IP_EMAIL_FROM="your_email@gmail.com"
 export RASPI_IP_EMAIL_TO="recipient@gmail.com"
 
+# Run
 python3 Internet_Base/RaspIP.py
 ```
+
+**⚠️ Important:** This uses Gmail SMTP directly with environment variables (NOT msmtp). See [CONFIGURATION_COMPARISON.md](CONFIGURATION_COMPARISON.md) for differences from sync.sh.
 
 ---
 
@@ -148,12 +154,20 @@ Check `sync.log` in the repository for historical sync information.
    sudo apt-get install msmtp msmtp-mta
    ```
 
-3. **Configure environment variables and email settings** as needed for each utility.
+3. **Choose which tools you need:**
+   - **For RaspIP.py (IP monitoring):** Follow [Internet_Base/SETUP_RASPIP.md](Internet_Base/SETUP_RASPIP.md)
+   - **For sync.sh (Git sync):** Configure email in sync.sh and set up cron
+   - **Both?** See [CONFIGURATION_COMPARISON.md](CONFIGURATION_COMPARISON.md) - they use different systems
 
 4. **Make scripts executable:**
    ```bash
    chmod +x sync.sh Internet_Base/RaspIP.py Hardware_Base/GPSTest.py
    ```
+
+## Documentation
+
+- [CONFIGURATION_COMPARISON.md](CONFIGURATION_COMPARISON.md) — Explains differences between RaspIP.py and sync.sh
+- [Internet_Base/SETUP_RASPIP.md](Internet_Base/SETUP_RASPIP.md) — Complete RaspIP.py setup guide with troubleshooting
 
 ## Requirements
 
