@@ -3,6 +3,7 @@
 
 import json
 import os
+import socket
 import subprocess
 import time
 import smtplib
@@ -16,6 +17,7 @@ SMTP_PASSWORD = os.getenv("RASPI_IP_SMTP_PASSWORD", "")
 EMAIL_FROM = os.getenv("RASPI_IP_EMAIL_FROM", SMTP_USER)
 EMAIL_TO = os.getenv("RASPI_IP_EMAIL_TO", "")
 EMAIL_SUBJECT = os.getenv("RASPI_IP_EMAIL_SUBJECT", "Raspberry Pi IP address update")
+DEVICE_NAME = os.getenv("RASPI_IP_DEVICE_NAME", socket.gethostname())
 CHECK_INTERVAL_SECONDS = int(os.getenv("RASPI_IP_CHECK_INTERVAL_SECONDS", "3600"))
 
 
@@ -80,9 +82,9 @@ def addresses_changed(old, new):
 
 def build_message(state):
     if not state:
-        return "No global IPv4 or IPv6 addresses found."
+        return f"Device: {DEVICE_NAME}\nNo global IPv4 or IPv6 addresses found."
 
-    lines = []
+    lines = [f"Device: {DEVICE_NAME}"]
     for iface in sorted(state):
         lines.append(f"Interface: {iface}")
         if state[iface].get("ipv4"):
@@ -116,8 +118,9 @@ def main():
     while True:
         current = get_ip_addresses()
         if addresses_changed(previous, current):
-            body = "Raspberry Pi IP address change detected.\n\n" + build_message(current)
-            send_email(EMAIL_SUBJECT, body)
+            body = f"IP address change detected on {DEVICE_NAME}.\n\n" + build_message(current)
+            subject = EMAIL_SUBJECT.replace("Raspberry Pi", DEVICE_NAME) if "Raspberry Pi" in EMAIL_SUBJECT else f"{DEVICE_NAME} - {EMAIL_SUBJECT}"
+            send_email(subject, body)
             save_state(STATE_FILE, current)
             previous = current
         time.sleep(CHECK_INTERVAL_SECONDS)
