@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
-"""Monitor Raspberry Pi IP addresses and email updates on change."""
+"""Monitor Raspberry Pi IP addresses and email updates on change.
 
+Configuration: Uses ~/.msmtprc (same as sync.sh)
+- Reads Gmail credentials from ~/.msmtprc
+- Monitors IP addresses and sends email notifications on change
+- Supports custom device naming
+"""
+
+import configparser
 import json
 import logging
 import os
@@ -10,6 +17,7 @@ import sys
 import time
 import smtplib
 from email.message import EmailMessage
+from pathlib import Path
 
 # Configure logging
 logging.basicConfig(
@@ -19,16 +27,67 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Configuration from environment or defaults
+MSMTPRC_FILE = os.path.expanduser("~/.msmtprc")
 STATE_FILE = os.getenv("RASPI_IP_STATE_FILE", "raspip_last_ips.json")
-SMTP_SERVER = os.getenv("RASPI_IP_SMTP_SERVER", "smtp.gmail.com")
-SMTP_PORT = int(os.getenv("RASPI_IP_SMTP_PORT", "587"))
-SMTP_USER = os.getenv("RASPI_IP_SMTP_USER", "")
-SMTP_PASSWORD = os.getenv("RASPI_IP_SMTP_PASSWORD", "")
-EMAIL_FROM = os.getenv("RASPI_IP_EMAIL_FROM", SMTP_USER)
-EMAIL_TO = os.getenv("RASPI_IP_EMAIL_TO", "")
 EMAIL_SUBJECT = os.getenv("RASPI_IP_EMAIL_SUBJECT", "Raspberry Pi IP address update")
 DEVICE_NAME = os.getenv("RASPI_IP_DEVICE_NAME", socket.gethostname())
 CHECK_INTERVAL_SECONDS = int(os.getenv("RASPI_IP_CHECK_INTERVAL_SECONDS", "3600"))
+
+# Will be loaded from .msmtprc
+SMTP_SERVER = None
+SMTP_PORT = None
+SMTP_USER = None
+SMTP_PASSWORD = None
+EMAIL_FROM = None
+EMAIL_TO = None
+
+
+def parse_msmtprc():
+    """Parse ~/.msmtprc file and extract Gmail configuration.
+    
+    Returns:
+        dict: Configuration with keys: smtp_server, smtp_port, smtp_user, 
+              smtp_password, email_from, email_to
+        None: If file not found or parsing fails
+    """
+    if not os.path.isfile(MSMTPRC_FILE):
+        logger.error(".msmtprc file not found at %s", MSMTPRC_FILE)
+        return None
+    
+    try:
+        config = configparser.ConfigParser()
+        config.read(MSMTPRC_FILE)
+        
+        # Look for the default account or gmail account
+        default_account = None
+        if config.has_section('defaults') and config.has_option('defaults', 'account'):
+            default_account = config.get('defaults', 'account')
+        
+        # Try to get account name - look for any section that's not 'defaults'
+        account_name = default_account or 'gmail'
+        
+        if not config.has_section(account_name):
+            logger.error("Account '%s' not found in .msmtprc", account_name)
+            return None
+        
+        config_dict = {
+            'smtp_server': config.get(account_name, 'host', fallback='smtp.gmail.com'),
+            'smtp_port': int(config.get(account_name, 'port', fallback='587')),
+            'smtp_user': config.get(account_name, 'user', fallback=''),
+            'smtp_password': config.get(account_name, 'password', fallback=''),
+            'email_from': config.get(account_name, 'from', fallback=''),
+            'email_to': os.getenv("RASPI_IP_EMAIL_TO", ""),  # Can override via env var
+        }
+        
+        return config_dict
+    
+    except configparser.Error as e:
+        logger.error("Error parsing .msmtprc: %s", str(e))
+        return None
+    except Exception as e:
+        logger.error("Unexpected error reading .msmtprc: %s", str(e))
+        return None
 
 
 def get_ip_addresses():
@@ -144,7 +203,7 @@ def send_email(subject, body):
         return True
     
     except smtplib.SMTPAuthenticationError as e:
-        logger.error("SMTP authentication failed. Check RASPI_IP_SMTP_USER and RASPI_IP_SMTP_PASSWORD. Error: %s", str(e))
+        logger.error("SMTP authentication failed. Check .msmtprc credentials. Error: %s", str(e))
         return False
     except smtplib.SMTPException as e:
         logger.error("SMTP error while sending email: %s", str(e))
@@ -158,20 +217,44 @@ def send_email(subject, body):
 
 
 def validate_configuration():
-    """Validate all required configuration before starting."""
+    """Validate all required configuration before starting.
+    
+    Loads configuration from ~/.msmtprc (same as sync.sh)
+    """
+    global SMTP_SERVER, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, EMAIL_FROM, EMAIL_TO
+    
     errors = []
+    
+    # Parse .msmtprc file
+    config = parse_msmtprc()
+    if config is None:
+        errors.append(f"Cannot read .msmtprc from {MSMTPRC_FILE}")
+        errors.append("  Create it: cp .msmtprc.template ~/.msmtprc && nano ~/.msmtprc")
+        errors.append("  See: https://github.com/vu3vyd/RaspberryPI_Auto")
+    else:
+        SMTP_SERVER = config['smtp_server']
+        SMTP_PORT = config['smtp_port']
+        SMTP_USER = config['smtp_user']
+        SMTP_PASSWORD = config['smtp_password']
+        EMAIL_FROM = config['email_from']
+        
+        # EMAIL_TO can be overridden via environment variable
+        if not EMAIL_TO:
+            EMAIL_TO = os.getenv("RASPI_IP_EMAIL_TO", "")
+    
+    # Validate required fields
+    if not SMTP_USER:
+        errors.append(".msmtprc missing 'user' field in [gmail] section")
+    
+    if not SMTP_PASSWORD:
+        errors.append(".msmtprc missing 'password' field in [gmail] section")
+    
+    if not EMAIL_FROM:
+        errors.append(".msmtprc missing 'from' field in [gmail] section")
     
     if not EMAIL_TO:
         errors.append("RASPI_IP_EMAIL_TO environment variable not set (recipient email)")
-    
-    if not SMTP_USER:
-        errors.append("RASPI_IP_SMTP_USER environment variable not set (sender email)")
-    
-    if not SMTP_PASSWORD:
-        errors.append("RASPI_IP_SMTP_PASSWORD environment variable not set (Gmail app password)")
-    
-    if not EMAIL_FROM:
-        errors.append("RASPI_IP_EMAIL_FROM environment variable not set (from address)")
+        errors.append("  Set it: export RASPI_IP_EMAIL_TO='recipient@gmail.com'")
     
     # Verify state file directory is writable
     state_dir = os.path.dirname(STATE_FILE) or "."
@@ -191,9 +274,13 @@ def validate_configuration():
         return False
     
     logger.info("Configuration validated successfully")
+    logger.info("Configuration File: %s", MSMTPRC_FILE)
     logger.info("Device Name: %s", DEVICE_NAME)
     logger.info("State File: %s", os.path.abspath(STATE_FILE))
     logger.info("Check Interval: %d seconds (%d minutes)", CHECK_INTERVAL_SECONDS, CHECK_INTERVAL_SECONDS // 60)
+    logger.info("SMTP Server: %s:%d", SMTP_SERVER, SMTP_PORT)
+    logger.info("From: %s", EMAIL_FROM)
+    logger.info("To: %s", EMAIL_TO)
     return True
 
 
