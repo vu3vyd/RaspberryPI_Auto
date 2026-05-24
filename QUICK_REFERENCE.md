@@ -1,22 +1,14 @@
 # Quick Reference Card
 
-## Setup (Choose One Method)
+## Setup
 
-### Method 1: Automatic ⭐ (Easiest)
 ```bash
-bash setup_config.sh
+cp raspi_config.template ~/.raspi_config
+nano ~/.raspi_config      # fill in sender, password, recipient, device name, subject
+chmod 600 ~/.raspi_config
 ```
-Answer prompts → Done!
 
-### Method 2: Templates
-```bash
-cp .raspi_env.template ~/.raspi_env
-nano ~/.raspi_env
-# Then copy and edit for sync.sh
-cp .msmtprc.template ~/.msmtprc
-nano ~/.msmtprc
-chmod 600 ~/.msmtprc
-```
+One file — used by both RaspIP.py and sync.sh.
 
 ---
 
@@ -44,9 +36,8 @@ python3 Hardware_Base/GPSTest.py
 
 | File | Location | Contains |
 |------|----------|----------|
-| SMTP config (both tools) | ~/.msmtprc | Gmail host, user, password, from |
-| RaspIP env vars | ~/.raspi_env | RASPI_IP_EMAIL_TO + optional vars |
-| State file | ~/.raspi_state.json | Last known IPs |
+| Shared config | ~/.raspi_config | All settings for both tools |
+| State file | as set in STATE_FILE | Last known IPs |
 | Sync log | ~/RaspberryPI_Auto/sync.log | Sync history |
 
 ---
@@ -55,11 +46,11 @@ python3 Hardware_Base/GPSTest.py
 
 | Problem | Solution |
 |---------|----------|
-| File not found | Run: `bash setup_config.sh` |
-| Permission denied | Run: `chmod 600 ~/.msmtprc` |
-| Auth failed | Check Gmail App Password |
-| No email sent | Check RASPI_IP_* variables |
-| Can't find template | Templates in repo root |
+| Config file not found | `cp raspi_config.template ~/.raspi_config && nano ~/.raspi_config` |
+| Permission denied | `chmod 600 ~/.raspi_config` |
+| Auth failed | Check `SMTP_PASSWORD` is a Gmail App Password |
+| No email sent | Check `SENDER_EMAIL`, `SMTP_PASSWORD`, `RECIPIENT_EMAIL` in config |
+| Missing field error | Open `~/.raspi_config` and fill in the missing value |
 
 ---
 
@@ -90,18 +81,14 @@ python3 Hardware_Base/GPSTest.py
 ## Check Configuration
 
 ```bash
-# View SMTP config (hide password line)
-grep -v "^password" ~/.msmtprc
+# View config (hide password line)
+grep -v "SMTP_PASSWORD" ~/.raspi_config
 
-# View RaspIP env vars
-cat ~/.raspi_env
-
-# Test email via msmtp (used by both tools for verification)
-echo "Test" | msmtp -v your_email@gmail.com
-
-# Test RaspIP.py startup (Ctrl+C to stop after config check)
-source ~/.raspi_env
+# Test RaspIP.py startup — shows all loaded values (Ctrl+C to stop)
 python3 ~/RaspberryPI_Auto/Internet_Base/RaspIP.py
+
+# Test sync.sh manually
+bash ~/RaspberryPI_Auto/Internet_Base/sync.sh
 ```
 
 ---
@@ -132,19 +119,25 @@ chmod 755 Internet_Base/RaspIP.py # Executable
 
 ---
 
-## Environment Variables Reference
-
-SMTP credentials come from `~/.msmtprc` — not from env vars.
+## ~/.raspi_config Reference
 
 ```bash
-# REQUIRED for RaspIP.py
-RASPI_IP_EMAIL_TO           # Recipient address
+# ── Required ───────────────────────────────────────────
+SENDER_EMAIL="your_gmail@gmail.com"
+SMTP_PASSWORD="your16charapppassword"
+RECIPIENT_EMAIL="recipient@gmail.com"
 
-# OPTIONAL for RaspIP.py
-RASPI_IP_DEVICE_NAME        # Device name in emails (default: hostname)
-RASPI_IP_EMAIL_SUBJECT      # Email subject template (default: "Raspberry Pi IP address update")
-RASPI_IP_CHECK_INTERVAL_SECONDS  # Check frequency in seconds (default: 3600)
-RASPI_IP_STATE_FILE         # State file path (default: raspip_last_ips.json)
+# ── Repository (sync.sh) ───────────────────────────────
+REPO="/home/pi/RaspberryPI_Auto"
+BRANCH="main"
+
+# ── Notification (both tools) ──────────────────────────
+DEVICE_NAME="MyRaspberryPi"
+EMAIL_SUBJECT="Raspberry Pi IP address update"
+
+# ── Advanced (RaspIP.py) ───────────────────────────────
+CHECK_INTERVAL_SECONDS="3600"
+STATE_FILE="/home/pi/.raspi_state.json"
 ```
 
 ---

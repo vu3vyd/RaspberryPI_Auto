@@ -72,23 +72,24 @@ Use the setup script for one tool and manual setup for the other.
 
 ## ✅ Verification Checklist
 
-### Before Running RaspIP.py
+### Before Running Either Tool
 
 - [ ] Gmail account with 2FA enabled
 - [ ] Gmail App Password generated (16 characters)
-- [ ] `~/.msmtprc` created with `host`, `user`, `password`, `from` filled in
-- [ ] `chmod 600 ~/.msmtprc` applied
-- [ ] `RASPI_IP_EMAIL_TO` environment variable set (recipient address)
-- [ ] Can run: `source ~/.raspi_env && python3 Internet_Base/RaspIP.py`
-- [ ] See log output starting with "Configuration validated successfully"
+- [ ] `~/.raspi_config` created from `raspi_config.template`
+- [ ] `SENDER_EMAIL`, `SMTP_PASSWORD`, `RECIPIENT_EMAIL` filled in (not placeholders)
+- [ ] `chmod 600 ~/.raspi_config` applied
+
+### Before Running RaspIP.py
+
+- [ ] Can run: `python3 Internet_Base/RaspIP.py`
+- [ ] Log shows "Configuration validated successfully" with correct sender/recipient
 
 ### Before Running sync.sh
 
-- [ ] Gmail account with 2FA enabled
-- [ ] Gmail App Password generated (16 characters)
-- [ ] `~/.msmtprc` file created with credentials
-- [ ] File permissions are 600: `ls -la ~/.msmtprc` shows `-rw-------`
-- [ ] Can run: `bash sync.sh` without errors
+- [ ] msmtp installed: `sudo apt-get install msmtp msmtp-mta`
+- [ ] `REPO` path in `~/.raspi_config` points to the cloned repo
+- [ ] Can run: `bash Internet_Base/sync.sh` without errors
 
 ### For Both Tools
 
@@ -237,14 +238,10 @@ ls -la ~/.raspi_env ~/.msmtprc
 
 ### "Configuration validation failed"
 
-**For RaspIP.py:**
+**For RaspIP.py and sync.sh:**
 ```bash
-# Check ~/.msmtprc has required fields
-grep -E "^(host|user|password|from)" ~/.msmtprc
-
-# Check recipient env var is set
-echo $RASPI_IP_EMAIL_TO
-# If empty: export RASPI_IP_EMAIL_TO="recipient@gmail.com"
+# Check ~/.raspi_config has required fields filled in
+grep -E "^(SENDER_EMAIL|SMTP_PASSWORD|RECIPIENT_EMAIL|REPO)" ~/.raspi_config
 ```
 
 **For sync.sh:**

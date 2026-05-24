@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Monitor Raspberry Pi IP addresses and email updates on change.
 
-Configuration: Uses ~/.msmtprc (same as sync.sh)
-- Reads Gmail credentials from ~/.msmtprc
-- Monitors IP addresses and sends email notifications on change
-- Supports custom device naming
+Configuration: ~/.raspi_config (shared with sync.sh)
+- All settings live in one file: sender, password, recipient, device name, subject
+- Monitors IP addresses across all interfaces and emails on change
 """
 
 import json
@@ -16,7 +15,6 @@ import sys
 import time
 import smtplib
 from email.message import EmailMessage
-from pathlib import Path
 
 # Configure logging
 logging.basicConfig(
@@ -26,87 +24,50 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Configuration from environment or defaults
-MSMTPRC_FILE = os.path.expanduser("~/.msmtprc")
-STATE_FILE = os.getenv("RASPI_IP_STATE_FILE", "raspip_last_ips.json")
-EMAIL_SUBJECT = os.getenv("RASPI_IP_EMAIL_SUBJECT", "Raspberry Pi IP address update")
-DEVICE_NAME = os.getenv("RASPI_IP_DEVICE_NAME", socket.gethostname())
-CHECK_INTERVAL_SECONDS = int(os.getenv("RASPI_IP_CHECK_INTERVAL_SECONDS", "3600"))
+CONFIG_FILE = os.path.expanduser("~/.raspi_config")
 
-# Will be loaded from .msmtprc
-SMTP_SERVER = None
-SMTP_PORT = None
+# Defaults — all overridable via CONFIG_FILE
+SMTP_SERVER = "smtp.gmail.com"
+SMTP_PORT = 587
 SMTP_USER = None
 SMTP_PASSWORD = None
 EMAIL_FROM = None
 EMAIL_TO = None
+DEVICE_NAME = socket.gethostname()
+EMAIL_SUBJECT = "Raspberry Pi IP address update"
+CHECK_INTERVAL_SECONDS = 3600
+STATE_FILE = "raspip_last_ips.json"
 
 
-def parse_msmtprc():
-    """Parse ~/.msmtprc file using the native msmtp configuration format.
+def parse_config():
+    """Parse ~/.raspi_config (KEY="value" format, # for comments).
 
-    msmtp uses its own line-oriented format (not INI), so configparser cannot
-    be used. This parser handles: blank lines, #-comments (inline and full-line),
-    'defaults' blocks, 'account NAME' blocks, and 'account default : NAME' aliases.
-
-    Returns:
-        dict with keys: smtp_server, smtp_port, smtp_user, smtp_password, email_from
-        None if file not found or parsing fails
+    Returns dict of key/value pairs, or None if the file is missing/unreadable.
     """
-    if not os.path.isfile(MSMTPRC_FILE):
-        logger.error(".msmtprc file not found at %s", MSMTPRC_FILE)
+    if not os.path.isfile(CONFIG_FILE):
+        logger.error("Config file not found: %s", CONFIG_FILE)
+        logger.error("  Create it: cp ~/RaspberryPI_Auto/raspi_config.template ~/.raspi_config")
         return None
 
+    config = {}
     try:
-        sections = {}
-        current_section = None
-
-        with open(MSMTPRC_FILE, "r", encoding="utf-8") as f:
+        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
             for line in f:
-                line = line.split("#")[0].strip()
-                if not line:
+                line = line.strip()
+                if not line or line.startswith("#"):
                     continue
-                parts = line.split()
-                keyword = parts[0].lower()
-
-                if keyword == "defaults":
-                    current_section = "defaults"
-                    sections.setdefault(current_section, {})
-                elif keyword == "account" and len(parts) >= 2:
-                    if parts[1].lower() == "default":
-                        continue
-                    current_section = parts[1]
-                    sections.setdefault(current_section, {})
-                elif current_section is not None and len(parts) >= 2:
-                    sections[current_section][keyword] = " ".join(parts[1:])
-
-        # Prefer account named 'gmail'; otherwise use the first non-defaults account
-        account_name = None
-        if "gmail" in sections:
-            account_name = "gmail"
-        else:
-            for name in sections:
-                if name != "defaults":
-                    account_name = name
-                    break
-
-        if account_name is None:
-            logger.error("No account section found in .msmtprc")
-            return None
-
-        # Account values override defaults
-        merged = {**sections.get("defaults", {}), **sections[account_name]}
-
-        return {
-            "smtp_server": merged.get("host", "smtp.gmail.com"),
-            "smtp_port": int(merged.get("port", "587")),
-            "smtp_user": merged.get("user", ""),
-            "smtp_password": merged.get("password", ""),
-            "email_from": merged.get("from", ""),
-        }
-
+                if "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                key = key.strip()
+                value = value.strip()
+                # Strip surrounding quotes (single or double)
+                if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
+                    value = value[1:-1]
+                config[key] = value
+        return config
     except Exception as e:
-        logger.error("Error parsing .msmtprc: %s", str(e))
+        logger.error("Error reading %s: %s", CONFIG_FILE, str(e))
         return None
 
 
@@ -156,7 +117,6 @@ def save_state(path, state):
         state_dir = os.path.dirname(path) or "."
         if not os.path.exists(state_dir):
             os.makedirs(state_dir, exist_ok=True)
-        
         with open(path, "w", encoding="utf-8") as file:
             json.dump(state, file, indent=2, sort_keys=True)
     except OSError as e:
@@ -196,12 +156,11 @@ def send_email(subject, body):
     if not EMAIL_TO or not SMTP_USER or not SMTP_PASSWORD or not EMAIL_FROM:
         logger.error(
             "Email configuration incomplete. Missing: %s",
-            ", ".join([
-                "EMAIL_TO" if not EMAIL_TO else "",
-                "SMTP_USER" if not SMTP_USER else "",
-                "SMTP_PASSWORD" if not SMTP_PASSWORD else "",
-                "EMAIL_FROM" if not EMAIL_FROM else "",
-            ]).strip(", ")
+            ", ".join(k for k, v in [
+                ("RECIPIENT_EMAIL", EMAIL_TO),
+                ("SENDER_EMAIL", SMTP_USER),
+                ("SMTP_PASSWORD", SMTP_PASSWORD),
+            ] if not v)
         )
         return False
 
@@ -218,12 +177,12 @@ def send_email(subject, body):
             smtp.ehlo()
             smtp.login(SMTP_USER, SMTP_PASSWORD)
             smtp.send_message(message)
-        
+
         logger.info("Email sent successfully to %s", EMAIL_TO)
         return True
-    
+
     except smtplib.SMTPAuthenticationError as e:
-        logger.error("SMTP authentication failed. Check .msmtprc credentials. Error: %s", str(e))
+        logger.error("SMTP authentication failed. Check SENDER_EMAIL and SMTP_PASSWORD in ~/.raspi_config. Error: %s", str(e))
         return False
     except smtplib.SMTPException as e:
         logger.error("SMTP error while sending email: %s", str(e))
@@ -237,70 +196,69 @@ def send_email(subject, body):
 
 
 def validate_configuration():
-    """Validate all required configuration before starting.
-    
-    Loads configuration from ~/.msmtprc (same as sync.sh)
-    """
-    global SMTP_SERVER, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, EMAIL_FROM, EMAIL_TO
-    
+    """Load ~/.raspi_config and validate all required settings."""
+    global SMTP_USER, SMTP_PASSWORD, EMAIL_FROM, EMAIL_TO
+    global DEVICE_NAME, EMAIL_SUBJECT, CHECK_INTERVAL_SECONDS, STATE_FILE
+
     errors = []
-    
-    # Parse .msmtprc file
-    config = parse_msmtprc()
+
+    config = parse_config()
     if config is None:
-        errors.append(f"Cannot read .msmtprc from {MSMTPRC_FILE}")
-        errors.append("  Create it: cp .msmtprc.template ~/.msmtprc && nano ~/.msmtprc")
-        errors.append("  See: https://github.com/vu3vyd/RaspberryPI_Auto")
+        errors.append(f"Cannot read config file: {CONFIG_FILE}")
+        errors.append("  Create it: cp ~/RaspberryPI_Auto/raspi_config.template ~/.raspi_config")
+        errors.append("  Then edit: nano ~/.raspi_config")
     else:
-        SMTP_SERVER = config['smtp_server']
-        SMTP_PORT = config['smtp_port']
-        SMTP_USER = config['smtp_user']
-        SMTP_PASSWORD = config['smtp_password']
-        EMAIL_FROM = config['email_from']
-        
-        # EMAIL_TO can be overridden via environment variable
-        if not EMAIL_TO:
-            EMAIL_TO = os.getenv("RASPI_IP_EMAIL_TO", "")
-    
+        SMTP_USER  = config.get("SENDER_EMAIL", "")
+        EMAIL_FROM = config.get("SENDER_EMAIL", "")
+        SMTP_PASSWORD  = config.get("SMTP_PASSWORD", "")
+        EMAIL_TO       = config.get("RECIPIENT_EMAIL", "")
+
+        if config.get("DEVICE_NAME"):
+            DEVICE_NAME = config["DEVICE_NAME"]
+        if config.get("EMAIL_SUBJECT"):
+            EMAIL_SUBJECT = config["EMAIL_SUBJECT"]
+        if config.get("STATE_FILE"):
+            STATE_FILE = config["STATE_FILE"]
+        if config.get("CHECK_INTERVAL_SECONDS"):
+            try:
+                CHECK_INTERVAL_SECONDS = int(config["CHECK_INTERVAL_SECONDS"])
+            except ValueError:
+                errors.append("CHECK_INTERVAL_SECONDS in ~/.raspi_config must be a whole number")
+
     # Validate required fields
     if not SMTP_USER:
-        errors.append(".msmtprc missing 'user' field in account section")
-
+        errors.append("SENDER_EMAIL missing or empty in ~/.raspi_config")
     if not SMTP_PASSWORD:
-        errors.append(".msmtprc missing 'password' field in account section")
-
-    if not EMAIL_FROM:
-        errors.append(".msmtprc missing 'from' field in account section")
-    
+        errors.append("SMTP_PASSWORD missing or empty in ~/.raspi_config")
     if not EMAIL_TO:
-        errors.append("RASPI_IP_EMAIL_TO environment variable not set (recipient email address)")
-        errors.append("  Set it: export RASPI_IP_EMAIL_TO='recipient@gmail.com'")
-    
+        errors.append("RECIPIENT_EMAIL missing or empty in ~/.raspi_config")
+
     # Verify state file directory is writable
     state_dir = os.path.dirname(STATE_FILE) or "."
     if not os.path.exists(state_dir):
         try:
             os.makedirs(state_dir, exist_ok=True)
         except OSError as e:
-            errors.append(f"Cannot create state file directory {state_dir}: {str(e)}")
-    
-    if not os.access(state_dir, os.W_OK):
+            errors.append(f"Cannot create state file directory {state_dir}: {e}")
+
+    if os.path.exists(state_dir) and not os.access(state_dir, os.W_OK):
         errors.append(f"State file directory {state_dir} is not writable")
-    
+
     if errors:
         logger.error("Configuration validation failed:")
         for error in errors:
-            logger.error("  - %s", error)
+            logger.error("  %s", error)
         return False
-    
+
     logger.info("Configuration validated successfully")
-    logger.info("Configuration File: %s", MSMTPRC_FILE)
-    logger.info("Device Name: %s", DEVICE_NAME)
-    logger.info("State File: %s", os.path.abspath(STATE_FILE))
-    logger.info("Check Interval: %d seconds (%d minutes)", CHECK_INTERVAL_SECONDS, CHECK_INTERVAL_SECONDS // 60)
-    logger.info("SMTP Server: %s:%d", SMTP_SERVER, SMTP_PORT)
-    logger.info("From: %s", EMAIL_FROM)
-    logger.info("To: %s", EMAIL_TO)
+    logger.info("Config file      : %s", CONFIG_FILE)
+    logger.info("Device name      : %s", DEVICE_NAME)
+    logger.info("State file       : %s", os.path.abspath(STATE_FILE))
+    logger.info("Check interval   : %d seconds (%d minutes)", CHECK_INTERVAL_SECONDS, CHECK_INTERVAL_SECONDS // 60)
+    logger.info("SMTP server      : %s:%d", SMTP_SERVER, SMTP_PORT)
+    logger.info("Sender           : %s", EMAIL_FROM)
+    logger.info("Recipient        : %s", EMAIL_TO)
+    logger.info("Email subject    : %s", EMAIL_SUBJECT)
     return True
 
 
@@ -308,26 +266,26 @@ def main():
     if not validate_configuration():
         logger.error("Cannot start RaspIP monitor due to configuration errors")
         sys.exit(1)
-    
+
     logger.info("Starting RaspIP monitor for device: %s", DEVICE_NAME)
     previous = load_previous_state(STATE_FILE)
-    
+
     while True:
         try:
             current = get_ip_addresses()
             if addresses_changed(previous, current):
                 logger.info("IP address change detected")
                 body = f"IP address change detected on {DEVICE_NAME}.\n\n" + build_message(current)
-                subject = EMAIL_SUBJECT.replace("Raspberry Pi", DEVICE_NAME) if "Raspberry Pi" in EMAIL_SUBJECT else f"{DEVICE_NAME} - {EMAIL_SUBJECT}"
-                
+                subject = f"{DEVICE_NAME} — {EMAIL_SUBJECT}"
+
                 if send_email(subject, body):
                     save_state(STATE_FILE, current)
                     previous = current
                 else:
                     logger.warning("Email send failed, not updating state file")
-            
+
             time.sleep(CHECK_INTERVAL_SECONDS)
-        
+
         except KeyboardInterrupt:
             logger.info("Received interrupt signal, shutting down gracefully")
             break

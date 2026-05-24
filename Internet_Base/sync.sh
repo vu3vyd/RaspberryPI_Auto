@@ -1,29 +1,82 @@
 #!/bin/bash
 # =============================================================
 #  sync.sh — Nightly GitHub sync + email status notification
-#  Repo  : https://github.com/vu3vyd/RaspberryPI_Auto
-#  Cron  : 50 23 * * *   (runs at 11:50 PM every night)
+#  Config : ~/.raspi_config  (shared with RaspIP.py)
+#  Cron   : 50 23 * * *   (runs at 11:50 PM every night)
 # =============================================================
 
-export HOME=/home/pi          # ensures msmtp finds ~/.msmtprc from cron
+export HOME=/home/pi          # ensures ~ expands correctly from cron
 
-# ── Configuration ─────────────────────────────────────────────
-REPO="/home/pi/RaspberryPI_Auto"          # path where repo is cloned on Pi
-BRANCH="main"
-LOG="/home/pi/RaspberryPI_Auto/sync.log"  # log lives inside the repo
-TO="your_email@gmail.com"                 # ← recipient address
-FROM="your_gmail@gmail.com"               # ← Gmail used in .msmtprc
-HOSTNAME_LABEL=$(hostname)
+CONFIG="$HOME/.raspi_config"
+
+# ── Load shared config ────────────────────────────────────────
+if [ ! -f "$CONFIG" ]; then
+    echo "ERROR: Config file not found: $CONFIG" >&2
+    echo "  Create it: cp ~/RaspberryPI_Auto/raspi_config.template ~/.raspi_config" >&2
+    exit 1
+fi
+
+# shellcheck source=/dev/null
+source "$CONFIG"
+
+# Validate required fields
+MISSING=""
+[ -z "$REPO" ]           && MISSING="$MISSING REPO"
+[ -z "$SENDER_EMAIL" ]   && MISSING="$MISSING SENDER_EMAIL"
+[ -z "$SMTP_PASSWORD" ]  && MISSING="$MISSING SMTP_PASSWORD"
+[ -z "$RECIPIENT_EMAIL" ] && MISSING="$MISSING RECIPIENT_EMAIL"
+
+if [ -n "$MISSING" ]; then
+    echo "ERROR: Missing required fields in $CONFIG:$MISSING" >&2
+    exit 1
+fi
+
+# ── Derived settings ──────────────────────────────────────────
+BRANCH="${BRANCH:-main}"
+DEVICE_NAME="${DEVICE_NAME:-$(hostname)}"
+LOG="$REPO/sync.log"
 DATE=$(date '+%Y-%m-%d %H:%M:%S')
+
+# ── Email helper ──────────────────────────────────────────────
+send_email() {
+    local subject="$1"
+    local body="$2"
+
+    local TEMP_RC
+    TEMP_RC=$(mktemp)
+    chmod 600 "$TEMP_RC"
+
+    cat > "$TEMP_RC" << MSMTPEOF
+defaults
+auth on
+tls on
+tls_trust_file /etc/ssl/certs/ca-certificates.crt
+
+account raspi
+host smtp.gmail.com
+port 587
+from $SENDER_EMAIL
+user $SENDER_EMAIL
+password $SMTP_PASSWORD
+
+account default : raspi
+MSMTPEOF
+
+    echo "$body" | msmtp -C "$TEMP_RC" "$RECIPIENT_EMAIL"
+    local code=$?
+    rm -f "$TEMP_RC"
+    return $code
+}
+
 # ──────────────────────────────────────────────────────────────
 
 echo "[$DATE] ── Sync started ──────────────────" >> "$LOG"
 
 # 1. Ensure repo path exists
 if [ ! -d "$REPO" ]; then
-    BODY="[$DATE] FAILED: Repo directory not found at $REPO on $HOSTNAME_LABEL."
+    BODY="[$DATE] FAILED: Repo directory not found at $REPO on $DEVICE_NAME."
     echo "$BODY" >> "$LOG"
-    echo "$BODY" | mail -s "[Git Sync] FAILED — $HOSTNAME_LABEL" -r "$FROM" "$TO"
+    send_email "[Git Sync] FAILED — $DEVICE_NAME" "$BODY"
     exit 1
 fi
 
@@ -37,7 +90,7 @@ echo "$FETCH_OUTPUT" >> "$LOG"
 if [ $FETCH_CODE -ne 0 ]; then
     BODY="Git fetch FAILED. Please investigate.
 
-Host       : $HOSTNAME_LABEL
+Device     : $DEVICE_NAME
 Repo       : $REPO
 Branch     : $BRANCH
 Time       : $DATE
@@ -48,7 +101,7 @@ $FETCH_OUTPUT
 
 ── Log file ───────────────────────────────
 $LOG"
-    echo "$BODY" | mail -s "[Git Sync] FAILED — $HOSTNAME_LABEL" -r "$FROM" "$TO"
+    send_email "[Git Sync] FAILED — $DEVICE_NAME" "$BODY"
     echo "[$DATE] Fetch FAILED. Mail sent." >> "$LOG"
     echo "[$DATE] ── Sync ended ────────────────────" >> "$LOG"
     exit 1
@@ -63,21 +116,19 @@ if [ "$LOCAL" = "$REMOTE" ]; then
     exit 0
 fi
 
-echo "[$DATE] Changes detected ($LOCAL → $REMOTE). Pulling." >> "$LOG"
+echo "[$DATE] Changes detected ($LOCAL -> $REMOTE). Pulling." >> "$LOG"
 
-# 3. Run git pull and capture output + exit code
+# 3. Pull and capture output
 PULL_OUTPUT=$(git pull origin "$BRANCH" 2>&1)
 EXIT_CODE=$?
-
 echo "$PULL_OUTPUT" >> "$LOG"
 
-# 4. Build email based on result
+# 4. Build email
 if [ $EXIT_CODE -eq 0 ]; then
     STATUS="SUCCESS"
-    SUBJECT="[Git Sync] SUCCESS — $HOSTNAME_LABEL"
     BODY="Git sync completed successfully.
 
-Host       : $HOSTNAME_LABEL
+Device     : $DEVICE_NAME
 Repo       : $REPO
 Branch     : $BRANCH
 Time       : $DATE
@@ -89,10 +140,9 @@ $PULL_OUTPUT
 $LOG"
 else
     STATUS="FAILED"
-    SUBJECT="[Git Sync] FAILED — $HOSTNAME_LABEL"
     BODY="Git sync FAILED. Please investigate.
 
-Host       : $HOSTNAME_LABEL
+Device     : $DEVICE_NAME
 Repo       : $REPO
 Branch     : $BRANCH
 Time       : $DATE
@@ -106,7 +156,7 @@ $LOG"
 fi
 
 # 5. Send email
-echo "$BODY" | mail -s "$SUBJECT" -r "$FROM" "$TO"
+send_email "[Git Sync] $STATUS — $DEVICE_NAME" "$BODY"
 MAIL_CODE=$?
 
 # 6. Final log entry

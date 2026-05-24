@@ -20,35 +20,27 @@ Monitor Raspberry Pi IP addresses and receive email notifications when they chan
 
 **Setup Guide:** See [Internet_Base/SETUP_RASPIP.md](Internet_Base/SETUP_RASPIP.md) for detailed setup instructions
 
-**Configuration:**
+**Configuration:** All settings live in a single shared file `~/.raspi_config` —
+used by both RaspIP.py and sync.sh.
 
-SMTP credentials (`host`, `user`, `password`, `from`) are read from `~/.msmtprc` —
-the same file used by sync.sh. Only the recipient address is set via env var.
-
-```bash
-# REQUIRED — recipient address
-RASPI_IP_EMAIL_TO                # Where to send notifications
-
-# OPTIONAL — customisation
-RASPI_IP_DEVICE_NAME             # Device name in emails (default: system hostname)
-RASPI_IP_EMAIL_SUBJECT           # Email subject template (default: "Raspberry Pi IP address update")
-RASPI_IP_CHECK_INTERVAL_SECONDS  # Check interval in seconds (default: 3600)
-RASPI_IP_STATE_FILE              # State file path (default: raspip_last_ips.json)
+```
+SENDER_EMAIL    — Gmail address used as sender        (required)
+SMTP_PASSWORD   — Gmail App Password                  (required)
+RECIPIENT_EMAIL — Where notifications are sent        (required)
+DEVICE_NAME     — Name shown in email subjects/bodies (default: hostname)
+EMAIL_SUBJECT   — Subject line for IP-change emails   (default: "Raspberry Pi IP address update")
+CHECK_INTERVAL_SECONDS — How often to check, seconds  (default: 3600)
+STATE_FILE      — Where last-known IPs are stored     (default: raspip_last_ips.json)
 ```
 
 **Quick Start:**
 ```bash
-# 1. Create ~/.msmtprc (if not already done for sync.sh)
-cp .msmtprc.template ~/.msmtprc
-nano ~/.msmtprc      # fill in your Gmail address and App Password
-chmod 600 ~/.msmtprc
+cp raspi_config.template ~/.raspi_config
+nano ~/.raspi_config      # fill in your Gmail credentials and recipient
+chmod 600 ~/.raspi_config
 
-# 2. Set recipient and run
-export RASPI_IP_EMAIL_TO="recipient@gmail.com"
 python3 Internet_Base/RaspIP.py
 ```
-
-**Note:** Both RaspIP.py and sync.sh share `~/.msmtprc` for SMTP credentials. See [Internet_Base/CONFIGURATION_COMPARISON.md](Internet_Base/CONFIGURATION_COMPARISON.md) for details.
 
 ---
 
@@ -98,43 +90,23 @@ Automated nightly Git repository sync with email status notifications. Perfect f
 - Sends email notifications with device hostname on successful pull or fetch failure
 - Reports success or failure with detailed git output
 
-**Configuration (inside `sync.sh`):**
-```bash
-REPO="/home/pi/RaspberryPI_Auto"          # Repository path
-BRANCH="main"                              # Branch to sync
-LOG="/home/pi/RaspberryPI_Auto/sync.log"  # Log file location
-TO="your_email@gmail.com"                  # Email recipient
-FROM="your_gmail@gmail.com"                # Gmail sender
-```
-
-**Email Setup:**
-Requires `msmtp` with Gmail configuration in `~/.msmtprc`:
-```
-defaults
-auth           on
-tls            on
-tls_trust_file /etc/ssl/certs/ca-certificates.crt
-
-account        gmail
-host           smtp.gmail.com
-port           587
-from           your_email@gmail.com
-user           your_email@gmail.com
-password       your_app_password
-
-account default : gmail
-```
+**Configuration:** Reads from `~/.raspi_config` (same file as RaspIP.py).
+Set `REPO`, `BRANCH`, `SENDER_EMAIL`, `SMTP_PASSWORD`, `RECIPIENT_EMAIL`, and `DEVICE_NAME` there — no hardcoded values to edit in the script.
 
 **Installation & Setup:**
 ```bash
-# Install msmtp
+# Install msmtp (used by sync.sh for email sending)
 sudo apt-get install msmtp msmtp-mta
 
-# Create cron job (runs daily at 11:50 PM)
-(crontab -l 2>/dev/null; echo "50 23 * * * /home/pi/RaspberryPI_Auto/sync.sh") | crontab -
+# Create shared config (if not already done)
+cp raspi_config.template ~/.raspi_config
+nano ~/.raspi_config
+chmod 600 ~/.raspi_config
 
-# Make sync.sh executable
-chmod +x sync.sh
+# Create cron job (runs daily at 11:50 PM)
+(crontab -l 2>/dev/null; echo "50 23 * * * /home/pi/RaspberryPI_Auto/Internet_Base/sync.sh") | crontab -
+
+chmod +x Internet_Base/sync.sh
 ```
 
 **Log File:**
@@ -144,46 +116,29 @@ Check `sync.log` in the repository for historical sync information.
 
 ## Quick Start
 
-### Easiest Way - Use Setup Script
+### Setup
 
 ```bash
 # 1. Clone the repository
 git clone https://github.com/vu3vyd/RaspberryPI_Auto.git ~/RaspberryPI_Auto
 cd ~/RaspberryPI_Auto
 
-# 2. Run the interactive setup (handles all configuration)
-bash setup_config.sh
+# 2. Create the shared config file (one file for everything)
+cp raspi_config.template ~/.raspi_config
+nano ~/.raspi_config      # fill in sender, password, recipient, device name
+chmod 600 ~/.raspi_config
 
-# 3. Run your tools
-source ~/.raspi_env
-python3 Internet_Base/RaspIP.py    # For IP monitoring
-# OR
-bash sync.sh                        # For Git sync
+# 3. Install dependencies
+pip install pyserial pynmea2           # for GPS
+sudo apt-get install msmtp msmtp-mta   # for sync.sh email
+
+# 4. Make scripts executable
+chmod +x Internet_Base/sync.sh Internet_Base/RaspIP.py Hardware_Base/GPSTest.py
+
+# 5. Run
+python3 Internet_Base/RaspIP.py        # IP monitoring
+bash Internet_Base/sync.sh             # Git sync (test run)
 ```
-
-### Manual Setup
-
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/vu3vyd/RaspberryPI_Auto.git ~/RaspberryPI_Auto
-   cd ~/RaspberryPI_Auto
-   ```
-
-2. **Install dependencies:**
-   ```bash
-   pip install pyserial pynmea2
-   sudo apt-get install msmtp msmtp-mta
-   ```
-
-3. **Choose which tools you need and configure:**
-   - **For RaspIP.py:** Copy `.raspi_env.template` to `~/.raspi_env` and edit it
-   - **For sync.sh:** Copy `.msmtprc.template` to `~/.msmtprc` and edit it
-   - See [FILES_CONFIGURATION.md](FILES_CONFIGURATION.md) for detailed instructions
-
-4. **Make scripts executable:**
-   ```bash
-   chmod +x setup_config.sh sync.sh Internet_Base/RaspIP.py Hardware_Base/GPSTest.py
-   ```
 
 ## Documentation
 
