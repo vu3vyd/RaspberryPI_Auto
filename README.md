@@ -142,6 +142,25 @@ Check `sync.log` in the repository for historical sync information.
 
 ## Quick Start
 
+### Easiest Way - Use Setup Script
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/vu3vyd/RaspberryPI_Auto.git ~/RaspberryPI_Auto
+cd ~/RaspberryPI_Auto
+
+# 2. Run the interactive setup (handles all configuration)
+bash setup_config.sh
+
+# 3. Run your tools
+source ~/.raspi_env
+python3 Internet_Base/RaspIP.py    # For IP monitoring
+# OR
+bash sync.sh                        # For Git sync
+```
+
+### Manual Setup
+
 1. **Clone the repository:**
    ```bash
    git clone https://github.com/vu3vyd/RaspberryPI_Auto.git ~/RaspberryPI_Auto
@@ -154,20 +173,26 @@ Check `sync.log` in the repository for historical sync information.
    sudo apt-get install msmtp msmtp-mta
    ```
 
-3. **Choose which tools you need:**
-   - **For RaspIP.py (IP monitoring):** Follow [Internet_Base/SETUP_RASPIP.md](Internet_Base/SETUP_RASPIP.md)
-   - **For sync.sh (Git sync):** Configure email in sync.sh and set up cron
-   - **Both?** See [CONFIGURATION_COMPARISON.md](CONFIGURATION_COMPARISON.md) - they use different systems
+3. **Choose which tools you need and configure:**
+   - **For RaspIP.py:** Copy `.raspi_env.template` to `~/.raspi_env` and edit it
+   - **For sync.sh:** Copy `.msmtprc.template` to `~/.msmtprc` and edit it
+   - See [FILES_CONFIGURATION.md](FILES_CONFIGURATION.md) for detailed instructions
 
 4. **Make scripts executable:**
    ```bash
-   chmod +x sync.sh Internet_Base/RaspIP.py Hardware_Base/GPSTest.py
+   chmod +x setup_config.sh sync.sh Internet_Base/RaspIP.py Hardware_Base/GPSTest.py
    ```
 
 ## Documentation
 
+- **[QUICK_REFERENCE.md](QUICK_REFERENCE.md)** — Quick command reference (bookmark this!)
+- **[FILES_CONFIGURATION.md](FILES_CONFIGURATION.md)** — Configuration file organization and setup guide
+- **[setup_config.sh](setup_config.sh)** — Interactive setup script (easiest way to configure)
+- [VERIFICATION_CHECKLIST.md](VERIFICATION_CHECKLIST.md) — After setup verification
 - [CONFIGURATION_COMPARISON.md](CONFIGURATION_COMPARISON.md) — Explains differences between RaspIP.py and sync.sh
 - [Internet_Base/SETUP_RASPIP.md](Internet_Base/SETUP_RASPIP.md) — Complete RaspIP.py setup guide with troubleshooting
+- [SETUP_COMPLETE.md](SETUP_COMPLETE.md) — How the complete system works
+- [IMPROVEMENTS_SUMMARY.md](IMPROVEMENTS_SUMMARY.md) — Technical details of improvements made
 
 ## Requirements
 

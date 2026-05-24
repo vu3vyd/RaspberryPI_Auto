@@ -1,0 +1,59 @@
+# Git ignore file for RaspberryPI_Auto
+# This ensures sensitive configuration files are never committed to the repository
+
+# User-specific configuration files (NEVER commit these!)
+# These contain Gmail passwords and should stay on your local machine only
+.raspi_env
+.msmtprc
+
+# Log files
+*.log
+sync.log
+raspip.log
+.msmtp.log
+
+# State files (can be regenerated)
+raspip_last_ips.json
+.raspi_state.json
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OS files
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp

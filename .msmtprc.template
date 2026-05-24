@@ -1,0 +1,32 @@
+# .msmtprc — Email configuration for sync.sh
+# 
+# This file is used by the msmtp mail utility (called by sync.sh)
+# It contains your Gmail SMTP configuration
+#
+# SETUP INSTRUCTIONS:
+# 1. Copy this file to your home directory: cp .msmtprc.template ~/.msmtprc
+# 2. Edit ~/.msmtprc and replace the placeholders with your Gmail credentials
+# 3. Set correct permissions: chmod 600 ~/.msmtprc
+# 4. Test with: echo "Test" | msmtp -v your_email@gmail.com
+#
+# WARNING: This file contains your email password!
+# - Never commit it to version control
+# - Keep permissions restricted (chmod 600)
+# - Never share it with others
+
+defaults
+auth           on
+tls            on
+tls_trust_file /etc/ssl/certs/ca-certificates.crt
+logfile        ~/.msmtp.log
+
+# Gmail account configuration
+account        gmail
+host           smtp.gmail.com
+port           587
+from           your_email@gmail.com           # ← Replace with your Gmail
+user           your_email@gmail.com           # ← Replace with your Gmail
+password       xxxx xxxx xxxx xxxx            # ← Replace with Gmail App Password (16 chars)
+
+# Set Gmail as default account
+account default : gmail
