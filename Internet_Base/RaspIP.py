@@ -15,6 +15,9 @@ import sys
 import time
 import smtplib
 from email.message import EmailMessage
+import shutil
+import urllib.request
+import ipaddress
 
 # Configure logging
 logging.basicConfig(
@@ -95,7 +98,77 @@ def get_ip_addresses():
             if address not in result[iface][version]:
                 result[iface][version].append(address)
 
+    # Add router (gateway + public IP) info under a special key
+    gw_v4 = get_default_gateway(False)
+    gw_v6 = get_default_gateway(True)
+    pub_v4 = get_public_ip(False)
+    pub_v6 = get_public_ip(True)
+
+    router_ipv4 = []
+    if gw_v4:
+        router_ipv4.append(gw_v4)
+    if pub_v4 and pub_v4 not in router_ipv4:
+        router_ipv4.append(pub_v4)
+
+    router_ipv6 = []
+    if gw_v6:
+        router_ipv6.append(gw_v6)
+    if pub_v6 and pub_v6 not in router_ipv6:
+        router_ipv6.append(pub_v6)
+
+    result["__router__"] = {"ipv4": router_ipv4, "ipv6": router_ipv6}
+
     return result
+
+
+
+def _parse_default_gateway(output):
+    # parse lines like: "default via 192.168.1.1 dev eth0"
+    for line in output.splitlines():
+        parts = line.split()
+        if "via" in parts:
+            try:
+                return parts[parts.index("via") + 1]
+            except Exception:
+                continue
+    return None
+
+
+def get_default_gateway(ipv6=False):
+    cmd = ["ip", "-6" if ipv6 else "-4", "route", "show", "default"]
+    try:
+        out = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL)
+        return _parse_default_gateway(out)
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+
+
+def get_public_ip(ipv6=False, timeout=5):
+    # Prefer curl if available so we can force -4/-6. Fall back to urllib.
+    curl = shutil.which("curl")
+    if curl:
+        url = "https://api.ipify.org"
+        args = [curl, "-s", "-4" if not ipv6 else "-6", url]
+        try:
+            out = subprocess.check_output(args, text=True, stderr=subprocess.DEVNULL, timeout=timeout).strip()
+            # validate
+            ipaddress.ip_address(out)
+            return out
+        except Exception:
+            pass
+
+    # urllib fallback
+    try:
+        url = "https://api64.ipify.org" if ipv6 else "https://api.ipify.org"
+        with urllib.request.urlopen(url, timeout=timeout) as resp:
+            out = resp.read().decode().strip()
+            try:
+                ipaddress.ip_address(out)
+                return out
+            except Exception:
+                return None
+    except Exception:
+        return None
 
 
 def load_previous_state(path):
@@ -126,8 +199,13 @@ def save_state(path, state):
 def normalize_state(state):
     normalized = {}
     for iface, data in state.items():
-        ipv4 = sorted(data.get("ipv4", []))
-        ipv6 = sorted(data.get("ipv6", []))
+        # Keep special keys (internal/router) in original order; sort real interfaces
+        if str(iface).startswith("__"):
+            ipv4 = data.get("ipv4", [])
+            ipv6 = data.get("ipv6", [])
+        else:
+            ipv4 = sorted(data.get("ipv4", []))
+            ipv6 = sorted(data.get("ipv6", []))
         if ipv4 or ipv6:
             normalized[iface] = {"ipv4": ipv4, "ipv6": ipv6}
     return normalized
@@ -142,12 +220,32 @@ def build_message(state):
         return f"Device: {DEVICE_NAME}\nNo global IPv4 or IPv6 addresses found."
 
     lines = [f"Device: {DEVICE_NAME}"]
-    for iface in sorted(state):
+    # Print non-router interfaces first, then router info
+    keys = [k for k in state.keys() if k != "__router__"]
+    for iface in sorted(keys):
         lines.append(f"Interface: {iface}")
         if state[iface].get("ipv4"):
             lines.append("  IPv4: " + ", ".join(state[iface]["ipv4"]))
         if state[iface].get("ipv6"):
             lines.append("  IPv6: " + ", ".join(state[iface]["ipv6"]))
+        lines.append("")
+
+    # Router (gateway + public)
+    router = state.get("__router__")
+    if router:
+        lines.append("Router:")
+        r4 = router.get("ipv4", [])
+        if r4:
+            if len(r4) >= 1:
+                lines.append(f"  IPv4 Gateway: {r4[0]}")
+            if len(r4) >= 2:
+                lines.append(f"  IPv4 Public : {r4[1]}")
+        r6 = router.get("ipv6", [])
+        if r6:
+            if len(r6) >= 1:
+                lines.append(f"  IPv6 Gateway: {r6[0]}")
+            if len(r6) >= 2:
+                lines.append(f"  IPv6 Public : {r6[1]}")
         lines.append("")
     return "\n".join(lines).strip()
 
